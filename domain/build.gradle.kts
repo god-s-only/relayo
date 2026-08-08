@@ -16,4 +16,6 @@ android {
 
 dependencies {
     implementation(libs.coroutines.core)
+    implementation("javax.inject:javax.inject:1")
+
 }
