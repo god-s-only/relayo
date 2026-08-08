@@ -56,6 +56,16 @@ fun MeshStatusScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
+
+            uiState.sessionId?.let { sessionId ->
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "Session ${sessionId.take(8)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
             Spacer(modifier = Modifier.size(24.dp))
 
             if(uiState.isLoading && uiState.devices.isEmpty()) {

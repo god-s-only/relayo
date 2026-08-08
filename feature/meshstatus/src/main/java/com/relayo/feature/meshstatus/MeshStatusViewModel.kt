@@ -3,6 +3,7 @@ package com.relayo.feature.meshstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.relayo.domain.model.MeshDevice
+import com.relayo.domain.usecase.GenerateIdentityUseCase
 import com.relayo.domain.usecase.ObserveNearbyDevicesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,12 +14,14 @@ import javax.inject.Inject
 
 data class MeshStatusUiState(
     val devices:List<MeshDevice> = emptyList(),
-    val isLoading:Boolean = true
+    val isLoading:Boolean = true,
+    val sessionId:String? = null
 )
 
 @HiltViewModel
 class MeshStatusViewModel @Inject constructor(
-    observeNearbyDevices:ObserveNearbyDevicesUseCase
+    observeNearbyDevices:ObserveNearbyDevicesUseCase,
+    private val generateIdentity:GenerateIdentityUseCase
 ):ViewModel() {
 
     private val _uiState = MutableStateFlow(MeshStatusUiState())
@@ -26,8 +29,12 @@ class MeshStatusViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            val identity = generateIdentity()
+            _uiState.value = _uiState.value.copy(sessionId = identity.sessionId)
+        }
+        viewModelScope.launch {
             observeNearbyDevices().collect { devices ->
-                _uiState.value = MeshStatusUiState(
+                _uiState.value = _uiState.value.copy(
                     devices = devices,
                     isLoading = false
                 )
