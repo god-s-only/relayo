@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
 import com.relayo.app.ui.theme.RelayoTheme
+import com.relayo.feature.meshstatus.MeshStatusScreen
 
 @AndroidEntryPoint
 class MainActivity:ComponentActivity() {
@@ -14,12 +15,8 @@ class MainActivity:ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             RelayoTheme {
-                RelayoRoot()
+                MeshStatusScreen()
             }
         }
     }
-}
-
-@androidx.compose.runtime.Composable
-private fun RelayoRoot() {
 }
