@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relayo.domain.model.MeshDevice
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 
 @Composable
 fun MeshStatusScreen(
@@ -65,7 +67,15 @@ fun MeshStatusScreen(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-
+            Spacer(modifier = Modifier.size(16.dp))
+            Button(
+                onClick = { viewModel.onEmergencyWipe() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Emergency Wipe")
+            }
             Spacer(modifier = Modifier.size(24.dp))
 
             if(uiState.isLoading && uiState.devices.isEmpty()) {
