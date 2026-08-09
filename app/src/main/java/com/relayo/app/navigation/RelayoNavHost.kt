@@ -13,6 +13,8 @@ import androidx.compose.runtime.Composable
 import com.relayo.feature.voicenotes.VoiceNotesScreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.getValue
+import com.relayo.feature.newsfeed.NewsFeedScreen
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -45,6 +47,9 @@ fun RelayoNavHost() {
             composable(RelayoDestination.VoiceNotes.route) {
                 VoiceNotesScreen()
             }
+            composable(RelayoDestination.NewsFeed.route) {
+                NewsFeedScreen()
+            }
         }
     }
 }
@@ -73,6 +78,7 @@ private fun RelayoBottomBar(navController:androidx.navigation.NavHostController)
                             RelayoDestination.MeshStatus -> Icons.Filled.Wifi
                             RelayoDestination.Messages -> Icons.Filled.Chat
                             RelayoDestination.VoiceNotes -> Icons.Filled.Mic
+                            RelayoDestination.NewsFeed -> Icons.Filled.Campaign
                         },
                         contentDescription = destination.label
                     )
