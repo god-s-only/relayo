@@ -5,8 +5,9 @@ sealed class RelayoDestination(val route:String, val label:String) {
     object Messages:RelayoDestination("messages", "Messages")
     object VoiceNotes:RelayoDestination("voice_notes", "Voice")
     object NewsFeed:RelayoDestination("news_feed", "Feed")
+    object Alerts:RelayoDestination("alerts", "Alerts")
 
     companion object {
-        val bottomNavItems = listOf(MeshStatus, Messages, VoiceNotes, NewsFeed)
+        val bottomNavItems = listOf(MeshStatus, Messages, VoiceNotes, NewsFeed, Alerts)
     }
 }

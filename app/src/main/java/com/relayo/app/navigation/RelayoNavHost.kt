@@ -10,6 +10,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.relayo.feature.alerts.AlertsScreen
+import androidx.compose.material.icons.filled.Warning
 import com.relayo.feature.voicenotes.VoiceNotesScreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.getValue
@@ -50,6 +52,9 @@ fun RelayoNavHost() {
             composable(RelayoDestination.NewsFeed.route) {
                 NewsFeedScreen()
             }
+            composable(RelayoDestination.Alerts.route) {
+                AlertsScreen()
+            }
         }
     }
 }
@@ -79,6 +84,7 @@ private fun RelayoBottomBar(navController:androidx.navigation.NavHostController)
                             RelayoDestination.Messages -> Icons.Filled.Chat
                             RelayoDestination.VoiceNotes -> Icons.Filled.Mic
                             RelayoDestination.NewsFeed -> Icons.Filled.Campaign
+                            RelayoDestination.Alerts -> Icons.Filled.Warning
                         },
                         contentDescription = destination.label
                     )
