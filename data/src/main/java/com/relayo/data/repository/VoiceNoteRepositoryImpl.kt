@@ -61,8 +61,11 @@ class VoiceNoteRepositoryImpl @Inject constructor(
             timestampEpochMillis = System.currentTimeMillis(),
             isFromMe = true
         )
-        flowFor(peerId).value = flowFor(peerId).value + note
         currentPeerId = null
+        if(path.isBlank()) {
+            return note
+        }
+        flowFor(peerId).value = flowFor(peerId).value + note
         return note
     }
 }

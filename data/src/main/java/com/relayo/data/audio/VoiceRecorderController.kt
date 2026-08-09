@@ -56,10 +56,26 @@ class VoiceRecorderController @Inject constructor(
     fun stop():Pair<String, Long> {
         tickerJob?.cancel()
         val finalElapsed = _elapsedMillis.value
+        val minValidDurationMillis = 400L
+
+        if(finalElapsed < minValidDurationMillis) {
+            try {
+                recorder?.reset()
+            } catch(e:RuntimeException) {
+            }
+            recorder?.release()
+            recorder = null
+            outputFile?.delete()
+            return "" to finalElapsed
+        }
+
         try {
             recorder?.stop()
         } catch(e:RuntimeException) {
-
+            outputFile?.delete()
+            recorder?.release()
+            recorder = null
+            return "" to finalElapsed
         }
         recorder?.release()
         recorder = null

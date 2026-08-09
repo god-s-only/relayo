@@ -120,6 +120,7 @@ fun VoiceNotesScreen(
 
 @Composable
 private fun VoiceNoteRow(note:VoiceNote) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -128,7 +129,7 @@ private fun VoiceNoteRow(note:VoiceNote) {
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { playNote(note.filePath) }) {
+        IconButton(onClick = { playNote(context, note.filePath) }) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -158,14 +159,29 @@ private fun VoiceNoteRow(note:VoiceNote) {
     }
 }
 
-private fun playNote(filePath:String) {
+private fun playNote(context:android.content.Context, filePath:String) {
+    if(filePath.isBlank()) {
+        android.widget.Toast.makeText(context, "Recording too short to play", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
+    val file = java.io.File(filePath)
+    if(!file.exists() || file.length() == 0L) {
+        android.widget.Toast.makeText(context, "Voice note file is missing or empty", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
     val player = MediaPlayer()
     try {
         player.setDataSource(filePath)
+        player.setOnErrorListener { mp, what, extra ->
+            android.widget.Toast.makeText(context, "Playback error ($what/$extra)", android.widget.Toast.LENGTH_SHORT).show()
+            mp.release()
+            true
+        }
         player.prepare()
         player.start()
         player.setOnCompletionListener { it.release() }
     } catch(e:Exception) {
+        android.widget.Toast.makeText(context, "Couldn't play: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         player.release()
     }
 }
