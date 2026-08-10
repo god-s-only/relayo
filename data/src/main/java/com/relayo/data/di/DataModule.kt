@@ -1,6 +1,6 @@
 package com.relayo.data.di
 
-import com.relayo.data.repository.FakeMeshRepository
+import com.relayo.data.repository.RealMeshRepository
 import com.relayo.domain.repository.MeshRepository
 import dagger.Binds
 import dagger.Module
@@ -13,6 +13,6 @@ abstract class DataModule {
 
     @Binds
     abstract fun bindMeshRepository(
-        impl:FakeMeshRepository
+        impl:RealMeshRepository
     ):MeshRepository
 }

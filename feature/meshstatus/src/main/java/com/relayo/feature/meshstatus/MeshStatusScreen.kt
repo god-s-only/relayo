@@ -33,12 +33,48 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relayo.domain.model.MeshDevice
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 @Composable
 fun MeshStatusScreen(
     viewModel:MeshStatusViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val requiredPermissions = if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if(results.values.all { it }) viewModel.onPermissionsGranted()
+    }
+
+    LaunchedEffect(Unit) {
+        val allGranted = requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if(allGranted) {
+            viewModel.onPermissionsGranted()
+        } else {
+            permissionLauncher.launch(requiredPermissions)
+        }
+    }
 
     Box(
         modifier = Modifier

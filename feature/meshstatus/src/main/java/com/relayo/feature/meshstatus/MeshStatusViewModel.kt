@@ -6,6 +6,7 @@ import com.relayo.domain.model.MeshDevice
 import com.relayo.domain.usecase.GenerateIdentityUseCase
 import com.relayo.domain.usecase.ObserveNearbyDevicesUseCase
 import com.relayo.domain.usecase.WipeIdentityUseCase
+import com.relayo.domain.repository.MeshRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,14 +17,16 @@ import javax.inject.Inject
 data class MeshStatusUiState(
     val devices:List<MeshDevice> = emptyList(),
     val isLoading:Boolean = true,
-    val sessionId:String? = null
+    val sessionId:String? = null,
+    val isDiscoveryActive:Boolean = false
 )
 
 @HiltViewModel
 class MeshStatusViewModel @Inject constructor(
     observeNearbyDevices:ObserveNearbyDevicesUseCase,
     private val generateIdentity:GenerateIdentityUseCase,
-    private val wipeIdentity:WipeIdentityUseCase
+    private val wipeIdentity:WipeIdentityUseCase,
+    private val meshRepository:MeshRepository
 ):ViewModel() {
 
     private val _uiState = MutableStateFlow(MeshStatusUiState())
@@ -53,6 +56,21 @@ class MeshStatusViewModel @Inject constructor(
             wipeIdentity()
             _uiState.value = _uiState.value.copy(sessionId = null)
             regenerateIdentity()
+        }
+    }
+
+    fun onPermissionsGranted() {
+        if(_uiState.value.isDiscoveryActive) return
+        _uiState.value = _uiState.value.copy(isDiscoveryActive = true)
+        viewModelScope.launch {
+            meshRepository.startDiscovery()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            meshRepository.stopDiscovery()
         }
     }
 }
