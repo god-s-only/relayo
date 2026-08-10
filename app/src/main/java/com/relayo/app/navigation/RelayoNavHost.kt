@@ -9,6 +9,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.relayo.feature.qrboards.QrBoardsScreen
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.runtime.Composable
 import com.relayo.feature.alerts.AlertsScreen
 import androidx.compose.material.icons.filled.Warning
@@ -55,6 +57,9 @@ fun RelayoNavHost() {
             composable(RelayoDestination.Alerts.route) {
                 AlertsScreen()
             }
+            composable(RelayoDestination.QrBoards.route) {
+                QrBoardsScreen()
+            }
         }
     }
 }
@@ -85,6 +90,7 @@ private fun RelayoBottomBar(navController:androidx.navigation.NavHostController)
                             RelayoDestination.VoiceNotes -> Icons.Filled.Mic
                             RelayoDestination.NewsFeed -> Icons.Filled.Campaign
                             RelayoDestination.Alerts -> Icons.Filled.Warning
+                            RelayoDestination.QrBoards -> Icons.Filled.QrCodeScanner
                         },
                         contentDescription = destination.label
                     )
