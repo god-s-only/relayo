@@ -114,6 +114,16 @@ fun MeshStatusScreen(
             }
             Spacer(modifier = Modifier.size(24.dp))
 
+            Spacer(modifier = Modifier.size(8.dp))
+            Button(
+                onClick = { viewModel.onDebugSendTapped() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("Debug: Send to nearest peer")
+            }
+
             if(uiState.isLoading && uiState.devices.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

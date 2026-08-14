@@ -8,6 +8,7 @@ data class IncomingBytes(
 )
 
 interface MeshMessenger {
+    fun start()
     fun observeIncoming():Flow<IncomingBytes>
     suspend fun sendTo(address:String, payload:ByteArray):Boolean
 }

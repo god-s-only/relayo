@@ -64,6 +64,7 @@ class MeshStatusViewModel @Inject constructor(
     fun onPermissionsGranted() {
         if(_uiState.value.isDiscoveryActive) return
         _uiState.value = _uiState.value.copy(isDiscoveryActive = true)
+        messenger.start()
         viewModelScope.launch {
             meshRepository.startDiscovery()
         }

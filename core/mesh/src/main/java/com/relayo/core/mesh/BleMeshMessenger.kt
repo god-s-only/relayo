@@ -14,10 +14,8 @@ import android.content.Context
 import com.relayo.core.transport.IncomingBytes
 import com.relayo.core.transport.MeshMessenger
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,80 +32,91 @@ class BleMeshMessenger @Inject constructor(
     private val _incoming = MutableSharedFlow<IncomingBytes>(extraBufferCapacity = 32)
     private var gattServer:BluetoothGattServer? = null
     private val activeConnections = mutableMapOf<String, BluetoothGatt>()
-
-    init {
-        startServer()
-    }
+    private var isStarted = false
 
     override fun observeIncoming() = _incoming.asSharedFlow()
 
     @SuppressLint("MissingPermission")
-    private fun startServer() {
-        val characteristic = BluetoothGattCharacteristic(
-            GattConstants.RELAYO_CHARACTERISTIC_UUID,
-            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
-        )
-        val service = BluetoothGattService(
-            BleConstants.RELAYO_SERVICE_UUID,
-            BluetoothGattService.SERVICE_TYPE_PRIMARY
-        )
-        service.addCharacteristic(characteristic)
+    override fun start() {
+        if(isStarted) return
+        try {
+            val characteristic = BluetoothGattCharacteristic(
+                GattConstants.RELAYO_CHARACTERISTIC_UUID,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
+            )
+            val service = BluetoothGattService(
+                BleConstants.RELAYO_SERVICE_UUID,
+                BluetoothGattService.SERVICE_TYPE_PRIMARY
+            )
+            service.addCharacteristic(characteristic)
 
-        val callback = object:BluetoothGattServerCallback() {
-            override fun onCharacteristicWriteRequest(
-                device:BluetoothDevice,
-                requestId:Int,
-                characteristic:BluetoothGattCharacteristic,
-                preparedWrite:Boolean,
-                responseNeeded:Boolean,
-                offset:Int,
-                value:ByteArray
-            ) {
-                _incoming.tryEmit(IncomingBytes(fromAddress = device.address, payload = value))
-                if(responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, value)
+            val callback = object:BluetoothGattServerCallback() {
+                override fun onCharacteristicWriteRequest(
+                    device:BluetoothDevice,
+                    requestId:Int,
+                    characteristic:BluetoothGattCharacteristic,
+                    preparedWrite:Boolean,
+                    responseNeeded:Boolean,
+                    offset:Int,
+                    value:ByteArray
+                ) {
+                    _incoming.tryEmit(IncomingBytes(fromAddress = device.address, payload = value))
+                    if(responseNeeded) {
+                        gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                    }
                 }
             }
-        }
 
-        gattServer = bluetoothManager.openGattServer(context, callback)
-        gattServer?.addService(service)
+            gattServer = bluetoothManager.openGattServer(context, callback)
+            gattServer?.addService(service)
+            isStarted = true
+        } catch(e:SecurityException) {
+        }
     }
 
     @SuppressLint("MissingPermission")
     override suspend fun sendTo(address:String, payload:ByteArray):Boolean {
-        val device = adapter?.getRemoteDevice(address) ?: return false
-        val gatt = activeConnections[address] ?: connectAndCache(device) ?: return false
+        if(!isStarted) return false
+        return try {
+            val device = adapter?.getRemoteDevice(address) ?: return false
+            val gatt = activeConnections[address] ?: connectAndCache(device) ?: return false
 
-        val service = gatt.getService(BleConstants.RELAYO_SERVICE_UUID) ?: return false
-        val characteristic = service.getCharacteristic(GattConstants.RELAYO_CHARACTERISTIC_UUID) ?: return false
+            val service = gatt.getService(BleConstants.RELAYO_SERVICE_UUID) ?: return false
+            val characteristic = service.getCharacteristic(GattConstants.RELAYO_CHARACTERISTIC_UUID) ?: return false
 
-        return suspendCancellableCoroutine { continuation ->
-            characteristic.value = payload
-            val started = gatt.writeCharacteristic(characteristic)
-            continuation.resume(started)
+            suspendCancellableCoroutine { continuation ->
+                characteristic.value = payload
+                val started = gatt.writeCharacteristic(characteristic)
+                continuation.resume(started)
+            }
+        } catch(e:SecurityException) {
+            false
         }
     }
 
     @SuppressLint("MissingPermission")
     private suspend fun connectAndCache(device:BluetoothDevice):BluetoothGatt? =
         suspendCancellableCoroutine { continuation ->
-            val callback = object:BluetoothGattCallback() {
-                override fun onConnectionStateChange(gatt:BluetoothGatt, status:Int, newState:Int) {
-                    if(newState == BluetoothProfile.STATE_CONNECTED) {
-                        activeConnections[device.address] = gatt
-                        gatt.discoverServices()
-                    } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-                        activeConnections.remove(device.address)
-                        gatt.close()
+            try {
+                val callback = object:BluetoothGattCallback() {
+                    override fun onConnectionStateChange(gatt:BluetoothGatt, status:Int, newState:Int) {
+                        if(newState == BluetoothProfile.STATE_CONNECTED) {
+                            activeConnections[device.address] = gatt
+                            gatt.discoverServices()
+                        } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
+                            activeConnections.remove(device.address)
+                            gatt.close()
+                        }
+                    }
+
+                    override fun onServicesDiscovered(gatt:BluetoothGatt, status:Int) {
+                        if(continuation.isActive) continuation.resume(gatt)
                     }
                 }
-
-                override fun onServicesDiscovered(gatt:BluetoothGatt, status:Int) {
-                    if(continuation.isActive) continuation.resume(gatt)
-                }
+                device.connectGatt(context, false, callback)
+            } catch(e:SecurityException) {
+                if(continuation.isActive) continuation.resume(null)
             }
-            device.connectGatt(context, false, callback)
         }
 }
