@@ -20,12 +20,14 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    implementation(project(":core:mesh"))
+    implementation(project(":core:transport"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.activity.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
-    implementation(libs.activity.compose)
 }

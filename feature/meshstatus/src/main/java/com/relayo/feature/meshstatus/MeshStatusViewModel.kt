@@ -10,6 +10,7 @@ import com.relayo.domain.repository.MeshRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.relayo.core.transport.MeshMessenger
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,7 +27,8 @@ class MeshStatusViewModel @Inject constructor(
     observeNearbyDevices:ObserveNearbyDevicesUseCase,
     private val generateIdentity:GenerateIdentityUseCase,
     private val wipeIdentity:WipeIdentityUseCase,
-    private val meshRepository:MeshRepository
+    private val meshRepository:MeshRepository,
+    private val messenger:MeshMessenger
 ):ViewModel() {
 
     private val _uiState = MutableStateFlow(MeshStatusUiState())
@@ -71,6 +73,20 @@ class MeshStatusViewModel @Inject constructor(
         super.onCleared()
         viewModelScope.launch {
             meshRepository.stopDiscovery()
+        }
+    }
+
+
+    fun onDebugSendTapped() {
+        val targetAddress = _uiState.value.devices.firstOrNull()?.id ?: return
+        viewModelScope.launch {
+            val success = messenger.sendTo(targetAddress, "Hello from Relayo".toByteArray())
+            android.util.Log.d("RelayoDebug", "Send to $targetAddress succeeded=$success")
+        }
+        viewModelScope.launch {
+            messenger.observeIncoming().collect { incoming ->
+                android.util.Log.d("RelayoDebug", "Received from ${incoming.fromAddress}: ${String(incoming.payload)}")
+            }
         }
     }
 }
