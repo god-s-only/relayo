@@ -15,7 +15,8 @@ import javax.inject.Singleton
 data class ReceivedPayload(
     val payloadType:String,
     val payloadBytes:ByteArray,
-    val originAddress:String
+    val originAddress:String,
+    val remainingTtl:Int
 )
 
 @Singleton
@@ -58,7 +59,7 @@ class MeshFloodRouter @Inject constructor(
         }
     }
 
-    suspend fun broadcast(payloadType:String, payloadBytes:ByteArray, initialTtl:Int = 4) {
+    suspend fun broadcast(payloadType:String, payloadBytes:ByteArray, initialTtl:Int = DEFAULT_TTL) {
         val envelope = MeshEnvelope(
             messageId = generateMessageId(),
             originAddress = "self",
@@ -78,7 +79,8 @@ class MeshFloodRouter @Inject constructor(
             ReceivedPayload(
                 payloadType = envelope.payloadType,
                 payloadBytes = envelope.payloadBytes,
-                originAddress = envelope.originAddress
+                originAddress = envelope.originAddress,
+                remainingTtl = envelope.ttl
             )
         )
 
@@ -106,5 +108,9 @@ class MeshFloodRouter @Inject constructor(
         val bytes = ByteArray(12)
         random.nextBytes(bytes)
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        const val DEFAULT_TTL = 4
     }
 }
