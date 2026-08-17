@@ -116,12 +116,20 @@ fun MeshStatusScreen(
 
             Spacer(modifier = Modifier.size(8.dp))
             Button(
-                onClick = { viewModel.onDebugSendTapped() },
+                onClick = { viewModel.onDebugFloodBroadcast() },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondary
                 )
             ) {
-                Text("Debug: Send to nearest peer")
+                Text("Debug: Flood Broadcast")
+            }
+            uiState.lastReceivedBroadcast?.let { received ->
+                Spacer(modifier = Modifier.size(4.dp))
+                Text(
+                    text = "Last received: $received",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
             }
 
             if(uiState.isLoading && uiState.devices.isEmpty()) {

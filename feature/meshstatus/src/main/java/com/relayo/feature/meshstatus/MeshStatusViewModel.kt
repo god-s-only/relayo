@@ -2,15 +2,16 @@ package com.relayo.feature.meshstatus
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.relayo.core.mesh.MeshFloodRouter
+import com.relayo.core.transport.MeshMessenger
 import com.relayo.domain.model.MeshDevice
+import com.relayo.domain.repository.MeshRepository
 import com.relayo.domain.usecase.GenerateIdentityUseCase
 import com.relayo.domain.usecase.ObserveNearbyDevicesUseCase
 import com.relayo.domain.usecase.WipeIdentityUseCase
-import com.relayo.domain.repository.MeshRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import com.relayo.core.transport.MeshMessenger
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -19,7 +20,8 @@ data class MeshStatusUiState(
     val devices:List<MeshDevice> = emptyList(),
     val isLoading:Boolean = true,
     val sessionId:String? = null,
-    val isDiscoveryActive:Boolean = false
+    val isDiscoveryActive:Boolean = false,
+    val lastReceivedBroadcast:String? = null
 )
 
 @HiltViewModel
@@ -28,7 +30,8 @@ class MeshStatusViewModel @Inject constructor(
     private val generateIdentity:GenerateIdentityUseCase,
     private val wipeIdentity:WipeIdentityUseCase,
     private val meshRepository:MeshRepository,
-    private val messenger:MeshMessenger
+    private val messenger:MeshMessenger,
+    private val floodRouter:MeshFloodRouter
 ):ViewModel() {
 
     private val _uiState = MutableStateFlow(MeshStatusUiState())
@@ -42,6 +45,15 @@ class MeshStatusViewModel @Inject constructor(
                     devices = devices,
                     isLoading = false
                 )
+            }
+        }
+        viewModelScope.launch {
+            floodRouter.incomingPayloads.collect { received ->
+                if(received.payloadType == "test") {
+                    val text = String(received.payloadBytes)
+                    _uiState.value = _uiState.value.copy(lastReceivedBroadcast = text)
+                    android.util.Log.d("RelayoDebug", "Flood-received: $text")
+                }
             }
         }
     }
@@ -65,8 +77,16 @@ class MeshStatusViewModel @Inject constructor(
         if(_uiState.value.isDiscoveryActive) return
         _uiState.value = _uiState.value.copy(isDiscoveryActive = true)
         messenger.start()
+        floodRouter.start()
         viewModelScope.launch {
             meshRepository.startDiscovery()
+        }
+    }
+
+    fun onDebugFloodBroadcast() {
+        viewModelScope.launch {
+            floodRouter.broadcast("test", "Hello mesh".toByteArray())
+            android.util.Log.d("RelayoDebug", "Flood-broadcast sent")
         }
     }
 
@@ -74,20 +94,6 @@ class MeshStatusViewModel @Inject constructor(
         super.onCleared()
         viewModelScope.launch {
             meshRepository.stopDiscovery()
-        }
-    }
-
-
-    fun onDebugSendTapped() {
-        val targetAddress = _uiState.value.devices.firstOrNull()?.id ?: return
-        viewModelScope.launch {
-            val success = messenger.sendTo(targetAddress, "Hello from Relayo".toByteArray())
-            android.util.Log.d("RelayoDebug", "Send to $targetAddress succeeded=$success")
-        }
-        viewModelScope.launch {
-            messenger.observeIncoming().collect { incoming ->
-                android.util.Log.d("RelayoDebug", "Received from ${incoming.fromAddress}: ${String(incoming.payload)}")
-            }
         }
     }
 }
