@@ -1,6 +1,6 @@
 package com.relayo.data.di
 
-import com.relayo.data.repository.FakeMessageRepository
+import com.relayo.data.repository.RealMessageRepository
 import com.relayo.domain.repository.MessageRepository
 import dagger.Binds
 import dagger.Module
@@ -13,6 +13,6 @@ abstract class MessageModule {
 
     @Binds
     abstract fun bindMessageRepository(
-        impl:FakeMessageRepository
+        impl:RealMessageRepository
     ):MessageRepository
 }

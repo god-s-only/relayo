@@ -1,6 +1,6 @@
 package com.relayo.data.di
 
-import com.relayo.data.repository.FakeNewsFeedRepository
+import com.relayo.data.repository.RealNewsFeedRepository
 import com.relayo.domain.repository.NewsFeedRepository
 import dagger.Binds
 import dagger.Module
@@ -13,6 +13,6 @@ abstract class NewsFeedModule {
 
     @Binds
     abstract fun bindNewsFeedRepository(
-        impl:FakeNewsFeedRepository
+        impl:RealNewsFeedRepository
     ):NewsFeedRepository
 }
