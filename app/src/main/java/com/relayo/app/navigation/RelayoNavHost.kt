@@ -27,10 +27,50 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.relayo.feature.messages.MessagesScreen
 import com.relayo.feature.meshstatus.MeshStatusScreen
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.relayo.app.session.AppSessionViewModel
 
 @Composable
-fun RelayoNavHost() {
+fun RelayoNavHost(
+    sessionViewModel:AppSessionViewModel = hiltViewModel()
+) {
+    val context = LocalContext.current
     val navController = rememberNavController()
+
+    val requiredPermissions = if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if(results.values.all { it }) sessionViewModel.onPermissionsGranted()
+    }
+
+    LaunchedEffect(Unit) {
+        val allGranted = requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if(allGranted) {
+            sessionViewModel.onPermissionsGranted()
+        } else {
+            permissionLauncher.launch(requiredPermissions)
+        }
+    }
 
     Scaffold(
         bottomBar = {
