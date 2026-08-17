@@ -3,7 +3,6 @@ package com.relayo.feature.meshstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.relayo.core.mesh.MeshFloodRouter
-import com.relayo.core.transport.MeshMessenger
 import com.relayo.domain.model.MeshDevice
 import com.relayo.domain.repository.MeshRepository
 import com.relayo.domain.usecase.GenerateIdentityUseCase
@@ -20,7 +19,6 @@ data class MeshStatusUiState(
     val devices:List<MeshDevice> = emptyList(),
     val isLoading:Boolean = true,
     val sessionId:String? = null,
-    val isDiscoveryActive:Boolean = false,
     val lastReceivedBroadcast:String? = null
 )
 
@@ -29,8 +27,7 @@ class MeshStatusViewModel @Inject constructor(
     observeNearbyDevices:ObserveNearbyDevicesUseCase,
     private val generateIdentity:GenerateIdentityUseCase,
     private val wipeIdentity:WipeIdentityUseCase,
-    private val meshRepository:MeshRepository,
-    private val messenger:MeshMessenger,
+    meshRepository:MeshRepository,
     private val floodRouter:MeshFloodRouter
 ):ViewModel() {
 
@@ -73,27 +70,10 @@ class MeshStatusViewModel @Inject constructor(
         }
     }
 
-    fun onPermissionsGranted() {
-        if(_uiState.value.isDiscoveryActive) return
-        _uiState.value = _uiState.value.copy(isDiscoveryActive = true)
-        messenger.start()
-        floodRouter.start()
-        viewModelScope.launch {
-            meshRepository.startDiscovery()
-        }
-    }
-
     fun onDebugFloodBroadcast() {
         viewModelScope.launch {
             floodRouter.broadcast("test", "Hello mesh".toByteArray())
             android.util.Log.d("RelayoDebug", "Flood-broadcast sent")
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        viewModelScope.launch {
-            meshRepository.stopDiscovery()
         }
     }
 }
