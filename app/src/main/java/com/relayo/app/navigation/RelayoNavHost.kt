@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.relayo.app.session.AppSessionViewModel
+import com.relayo.feature.voicenotes.VoiceNoteConversationsScreen
 
 @Composable
 fun RelayoNavHost(
@@ -89,6 +90,16 @@ fun RelayoNavHost(
                 MeshStatusScreen()
             }
             composable(RelayoDestination.VoiceNotes.route) {
+                VoiceNoteConversationsScreen(
+                    onConversationSelected = { peerId ->
+                        navController.navigate(RelayoDestination.voiceDetailRoute(peerId))
+                    }
+                )
+            }
+            composable(
+                route = RelayoDestination.VOICE_DETAIL_ROUTE,
+                arguments = listOf(navArgument("peerId") { type = NavType.StringType })
+            ) {
                 VoiceNotesScreen()
             }
             composable(RelayoDestination.NewsFeed.route) {
