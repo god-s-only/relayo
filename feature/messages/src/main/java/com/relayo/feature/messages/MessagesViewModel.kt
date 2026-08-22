@@ -1,5 +1,6 @@
 package com.relayo.feature.messages
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.relayo.domain.model.Message
@@ -12,8 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val DEMO_PEER_ID = "device-001"
-
 data class MessagesUiState(
     val messages:List<Message> = emptyList(),
     val draft:String = ""
@@ -21,16 +20,19 @@ data class MessagesUiState(
 
 @HiltViewModel
 class MessagesViewModel @Inject constructor(
+    savedStateHandle:SavedStateHandle,
     observeConversation:ObserveConversationUseCase,
     private val sendMessage:SendMessageUseCase
 ):ViewModel() {
+
+    private val peerId:String = checkNotNull(savedStateHandle["peerId"])
 
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState:StateFlow<MessagesUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            observeConversation(DEMO_PEER_ID).collect { messages ->
+            observeConversation(peerId).collect { messages ->
                 _uiState.value = _uiState.value.copy(messages = messages)
             }
         }
@@ -45,7 +47,7 @@ class MessagesViewModel @Inject constructor(
         if(text.isEmpty()) return
         _uiState.value = _uiState.value.copy(draft = "")
         viewModelScope.launch {
-            sendMessage(DEMO_PEER_ID, text)
+            sendMessage(peerId, text)
         }
     }
 }
