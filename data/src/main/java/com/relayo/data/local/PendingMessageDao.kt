@@ -25,4 +25,7 @@ interface PendingMessageDao {
 
     @Query("SELECT * FROM pending_messages WHERE id = :id LIMIT 1")
     suspend fun getById(id:String):PendingMessageEntity?
+
+    @Query("SELECT * FROM pending_messages ORDER BY queuedAtEpochMillis ASC")
+    suspend fun getAll():List<PendingMessageEntity>
 }

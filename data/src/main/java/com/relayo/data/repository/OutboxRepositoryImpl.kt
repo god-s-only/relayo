@@ -61,9 +61,14 @@ class OutboxRepositoryImpl @Inject constructor(
     }
 
     private suspend fun attemptFlush() {
-        val pending = dao.observeAll()
-
-        val entities = dao.observeAll()
+        val pending = dao.getAll()
+        pending.forEach { entity ->
+            if(entity.attemptCount >= MAX_ATTEMPTS) return@forEach
+            val delivered = floodRouter.broadcast(entity.payloadType, entity.payloadBytes)
+            // broadcast() currently returns Unit, not a delivery confirmation —
+            // see honest note below on what "delivered" actually means here.
+            incrementAttempt(entity.id)
+        }
     }
 
     private fun PendingMessageEntity.toDomain() = PendingMessage(
