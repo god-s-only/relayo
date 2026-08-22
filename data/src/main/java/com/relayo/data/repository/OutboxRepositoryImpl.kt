@@ -64,9 +64,7 @@ class OutboxRepositoryImpl @Inject constructor(
         val pending = dao.getAll()
         pending.forEach { entity ->
             if(entity.attemptCount >= MAX_ATTEMPTS) return@forEach
-            val delivered = floodRouter.broadcast(entity.payloadType, entity.payloadBytes)
-            // broadcast() currently returns Unit, not a delivery confirmation —
-            // see honest note below on what "delivered" actually means here.
+            floodRouter.broadcast(entity.payloadType, entity.payloadBytes)
             incrementAttempt(entity.id)
         }
     }
