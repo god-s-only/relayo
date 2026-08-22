@@ -6,13 +6,16 @@ import com.relayo.core.crypto.EncryptedPayload
 import com.relayo.core.mesh.MeshFloodRouter
 import com.relayo.data.wire.MessageWire
 import com.relayo.data.wire.MessageWireCodec
+import com.relayo.domain.model.ConversationSummary
 import com.relayo.domain.model.Message
+import com.relayo.domain.repository.MeshRepository
 import com.relayo.domain.repository.MessageRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.serialization.InternalSerializationApi
 import javax.crypto.SecretKey
@@ -25,16 +28,14 @@ private const val PAYLOAD_TYPE = "message"
 @Singleton
 class RealMessageRepository @Inject constructor(
     private val floodRouter:MeshFloodRouter,
-    private val cipher:AesGcmCipher
+    private val cipher:AesGcmCipher,
+    private val meshRepository:MeshRepository
 ):MessageRepository {
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val conversationFlows = mutableMapOf<String, MutableStateFlow<List<Message>>>()
+    private val knownPeerDisplayNames = mutableMapOf<String, String>()
 
-    // Simplification flagged honestly: a single fixed session key shared by
-    // every conversation, not a per-peer key derived via real ECDH agreement.
-    // Real E2EE needs the public keys exchanged during discovery/handshake —
-    // that's a follow-up piece, not shipped here.
     private val sessionKey:SecretKey = cipher.generateKey()
 
     private fun flowFor(peerId:String):MutableStateFlow<List<Message>> =
@@ -64,13 +65,35 @@ class RealMessageRepository @Inject constructor(
                     val peerId = wire.senderId
                     flowFor(peerId).value = flowFor(peerId).value + message
                 } catch(e:Exception) {
-
                 }
             }
         }
     }
 
     override fun observeConversation(peerId:String) = flowFor(peerId).asStateFlow()
+
+    override fun observeConversations() = combine(
+        meshRepository.observeNearbyDevices()
+    ) { nearbyArray ->
+        val nearby = nearbyArray[0]
+        val nearbyIds = nearby.map { it.id }.toSet()
+
+        nearby.forEach { device -> knownPeerDisplayNames[device.id] = device.displayName }
+
+        val allKnownPeerIds = (conversationFlows.keys + nearbyIds).toSet()
+
+        allKnownPeerIds.map { peerId ->
+            val messages = conversationFlows[peerId]?.value.orEmpty()
+            val lastMessage = messages.lastOrNull()
+            ConversationSummary(
+                peerId = peerId,
+                displayName = knownPeerDisplayNames[peerId] ?: peerId.takeLast(6),
+                lastMessagePreview = lastMessage?.content,
+                lastMessageTimestampEpochMillis = lastMessage?.timestampEpochMillis,
+                isOnline = peerId in nearbyIds
+            )
+        }.sortedByDescending { it.lastMessageTimestampEpochMillis ?: 0L }
+    }
 
     override suspend fun sendMessage(peerId:String, content:String) {
         val encrypted = cipher.encrypt(sessionKey, content)
