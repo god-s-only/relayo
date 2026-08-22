@@ -10,5 +10,7 @@ sealed class RelayoDestination(val route:String, val label:String) {
 
     companion object {
         val bottomNavItems = listOf(MeshStatus, Messages, VoiceNotes, NewsFeed, Alerts, QrBoards)
+        const val CHAT_DETAIL_ROUTE = "messages/{peerId}"
+        fun chatDetailRoute(peerId:String) = "messages/$peerId"
     }
 }

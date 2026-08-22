@@ -18,6 +18,9 @@ import com.relayo.feature.voicenotes.VoiceNotesScreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.getValue
 import com.relayo.feature.newsfeed.NewsFeedScreen
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.relayo.feature.messages.ConversationsScreen
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -85,9 +88,6 @@ fun RelayoNavHost(
             composable(RelayoDestination.MeshStatus.route) {
                 MeshStatusScreen()
             }
-            composable(RelayoDestination.Messages.route) {
-                MessagesScreen()
-            }
             composable(RelayoDestination.VoiceNotes.route) {
                 VoiceNotesScreen()
             }
@@ -99,6 +99,19 @@ fun RelayoNavHost(
             }
             composable(RelayoDestination.QrBoards.route) {
                 QrBoardsScreen()
+            }
+            composable(RelayoDestination.Messages.route) {
+                ConversationsScreen(
+                    onConversationSelected = { peerId ->
+                        navController.navigate(RelayoDestination.chatDetailRoute(peerId))
+                    }
+                )
+            }
+            composable(
+                route = RelayoDestination.CHAT_DETAIL_ROUTE,
+                arguments = listOf(navArgument("peerId") { type = NavType.StringType })
+            ) {
+                MessagesScreen()
             }
         }
     }

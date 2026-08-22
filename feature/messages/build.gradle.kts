@@ -29,4 +29,5 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
+    implementation(libs.navigation.compose)
 }
