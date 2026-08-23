@@ -176,22 +176,6 @@ class BleMeshMessenger @Inject constructor(
                             if(it.isActive) it.resume(status == BluetoothGatt.GATT_SUCCESS)
                         }
                     }
-
-                    // API 33+ overload — delegate to same logic
-                    override fun onCharacteristicWrite(
-                        gatt:BluetoothGatt,
-                        characteristic:BluetoothGattCharacteristic,
-                        value:ByteArray,
-                        status:Int
-                    ) {
-                        val addr = gatt.device.address
-                        val cont = synchronized(pendingWritesLock) {
-                            pendingWrites.remove(addr)
-                        }
-                        cont?.let {
-                            if(it.isActive) it.resume(status == BluetoothGatt.GATT_SUCCESS)
-                        }
-                    }
                 }
                 device.connectGatt(context, false, callback)
             } catch(e:SecurityException) {
