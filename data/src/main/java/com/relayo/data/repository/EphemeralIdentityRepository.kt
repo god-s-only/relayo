@@ -25,7 +25,8 @@ class EphemeralIdentityRepository @Inject constructor(
         val keyPair = keyPairGenerator.generate()
         val identity = EphemeralIdentity(
             sessionId = sessionIdGenerator.generate(),
-            publicKeyBytes = keyPair.public.encoded
+            publicKeyBytes = keyPair.public.encoded,
+            privateKeyBytes = keyPair.private.encoded
         )
         _identity.value = identity
         return identity

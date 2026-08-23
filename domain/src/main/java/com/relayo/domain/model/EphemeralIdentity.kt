@@ -2,7 +2,8 @@ package com.relayo.domain.model
 
 data class EphemeralIdentity(
     val sessionId:String,
-    val publicKeyBytes:ByteArray
+    val publicKeyBytes:ByteArray,
+    val privateKeyBytes:ByteArray
 ){
     override fun equals(other:Any?):Boolean {
         if(this === other) return true
@@ -11,4 +12,6 @@ data class EphemeralIdentity(
     }
 
     override fun hashCode():Int = sessionId.hashCode()
+
+    override fun toString():String = "EphemeralIdentity(sessionId=$sessionId, publicKeyBytes=****, privateKeyBytes=****)"
 }
