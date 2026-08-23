@@ -28,4 +28,12 @@ class MeshSessionManager @Inject constructor(
             meshRepository.startDiscovery()
         }
     }
+
+    fun stopIfNeeded() {
+        if(!started) return
+        started = false
+        sessionScope.launch {
+            try { meshRepository.stopDiscovery() } catch(_:Exception) {}
+        }
+    }
 }

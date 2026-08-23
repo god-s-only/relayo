@@ -78,7 +78,6 @@ class MeshStatusViewModel @Inject constructor(
     }
 
     fun onPermissionsGranted() {
-        // Permission grant is handled by AppSessionViewModel / MeshSessionManager;
-        // MeshStatus screen just needs to acknowledge. Could also trigger a refresh.
+        // Mesh is started via AppSessionViewModel / RelayoNavHost; keep for UI compat
     }
 }
