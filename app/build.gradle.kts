@@ -50,6 +50,7 @@ dependencies {
     implementation(project(":feature:messages"))
     implementation(project(":feature:voicenotes"))
     implementation(project(":feature:qrboards"))
+    implementation(project(":feature:bridge"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.lifecycle.runtime.ktx)

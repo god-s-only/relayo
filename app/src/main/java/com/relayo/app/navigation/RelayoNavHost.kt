@@ -18,6 +18,8 @@ import com.relayo.feature.voicenotes.VoiceNotesScreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.getValue
 import com.relayo.feature.newsfeed.NewsFeedScreen
+import com.relayo.feature.bridge.BridgeScreen
+import androidx.compose.material.icons.filled.Cloud
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.relayo.feature.messages.ConversationsScreen
@@ -111,6 +113,9 @@ fun RelayoNavHost(
             composable(RelayoDestination.QrBoards.route) {
                 QrBoardsScreen()
             }
+            composable(RelayoDestination.Bridge.route) {
+                BridgeScreen()
+            }
             composable(RelayoDestination.Messages.route) {
                 ConversationsScreen(
                     onConversationSelected = { peerId ->
@@ -155,6 +160,7 @@ private fun RelayoBottomBar(navController:androidx.navigation.NavHostController)
                             RelayoDestination.NewsFeed -> Icons.Filled.Campaign
                             RelayoDestination.Alerts -> Icons.Filled.Warning
                             RelayoDestination.QrBoards -> Icons.Filled.QrCodeScanner
+                            RelayoDestination.Bridge -> Icons.Filled.Cloud
                         },
                         contentDescription = destination.label
                     )
