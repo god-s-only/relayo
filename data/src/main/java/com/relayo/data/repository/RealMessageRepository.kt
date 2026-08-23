@@ -7,6 +7,8 @@ import com.relayo.core.crypto.AesGcmCipher
 import com.relayo.core.crypto.EcdhKeyAgreement
 import com.relayo.core.crypto.EncryptedPayload
 import com.relayo.core.mesh.MeshFloodRouter
+import com.relayo.data.local.MessageDao
+import com.relayo.data.local.MessageEntity
 import com.relayo.data.wire.KeyExchangeWire
 import com.relayo.data.wire.KeyExchangeWireCodec
 import com.relayo.data.wire.MessageWire
@@ -43,6 +45,7 @@ class RealMessageRepository @Inject constructor(
     private val meshRepository:MeshRepository,
     private val identityRepository:IdentityRepository,
     private val contentFilter:ContentFilter,
+    private val messageDao:MessageDao,
     @ApplicationContext private val context:Context
 ):MessageRepository {
 
@@ -75,8 +78,16 @@ class RealMessageRepository @Inject constructor(
 
         repositoryScope.launch {
             meshRepository.observeNearbyDevices().collect { nearby ->
-                // Opportunistically rebroadcast our key when new peers appear
                 currentIdentity?.let { broadcastPublicKey(it) }
+            }
+        }
+
+        // Load persisted messages from Room and populate flows
+        repositoryScope.launch(Dispatchers.IO) {
+            val persisted = messageDao.getAll()
+            persisted.groupBy { it.peerId }.forEach { (peerId, entities) ->
+                val messages = entities.map { it.toDomain() }.sortedBy { it.timestampEpochMillis }
+                flowFor(peerId).value = messages
             }
         }
 
@@ -88,6 +99,31 @@ class RealMessageRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun MessageEntity.toDomain() = Message(
+        id = id,
+        senderId = senderId,
+        recipientId = recipientId,
+        content = content,
+        timestampEpochMillis = timestampEpochMillis,
+        isFromMe = isFromMe
+    )
+
+    private fun Message.toEntity(peerId:String) = MessageEntity(
+        id = id,
+        peerId = peerId,
+        senderId = senderId,
+        recipientId = recipientId,
+        content = content,
+        timestampEpochMillis = timestampEpochMillis,
+        isFromMe = isFromMe
+    )
+
+    private suspend fun persistMessage(peerId:String, message:Message) {
+        try {
+            messageDao.insert(message.toEntity(peerId))
+        } catch(_:Exception) {}
     }
 
     private suspend fun broadcastPublicKey(identity:EphemeralIdentity) {
@@ -104,9 +140,6 @@ class RealMessageRepository @Inject constructor(
     }
 
     private fun mySenderId(identity:EphemeralIdentity? = currentIdentity):String {
-        // Prefer stable Bluetooth address when available so peerId (Bluetooth MAC)
-        // used in Conversations matches the ECDH key map. Fall back to sessionId
-        // for emulators / permission-restricted devices.
         try {
             val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             bm.adapter?.address?.takeIf { it.isNotBlank() && it != "02:00:00:00:00:00" }?.let { return it }
@@ -123,7 +156,6 @@ class RealMessageRepository @Inject constructor(
             val pubBytes = Base64.decode(wire.publicKeyBase64, Base64.NO_WRAP)
             if(!ecdh.isValidPublicKey(pubBytes)) return
             val identity = currentIdentity ?: return
-            // Store under both Bluetooth address (senderId) and sessionId for flexible lookup
             peerPublicKeys[wire.senderId] = pubBytes
             if(wire.sessionId.isNotBlank()) {
                 peerPublicKeys[wire.sessionId] = pubBytes
@@ -132,7 +164,6 @@ class RealMessageRepository @Inject constructor(
                 knownPeerDisplayNames[wire.senderId] = knownPeerDisplayNames[wire.senderId] ?: wire.senderId.takeLast(6)
                 knownPeerDisplayNames[wire.sessionId] = knownPeerDisplayNames[wire.senderId] ?: wire.sessionId.takeLast(6)
             }
-            // Derive and cache shared AES key for both identifiers
             val sharedKey = ecdh.deriveSharedKey(identity.privateKeyBytes, pubBytes)
             synchronized(derivedKeysLock) {
                 derivedKeys[wire.senderId] = sharedKey
@@ -145,12 +176,10 @@ class RealMessageRepository @Inject constructor(
     private fun getOrDeriveKey(peerId:String):SecretKey? {
         synchronized(derivedKeysLock) {
             derivedKeys[peerId]?.let { return it }
-            // Try cross-lookup via session mapping
             bluetoothToSession[peerId]?.let { session -> derivedKeys[session]?.let { return it } }
             sessionToBluetooth[peerId]?.let { bt -> derivedKeys[bt]?.let { return it } }
         }
         val identity = currentIdentity ?: return null
-        // Try direct, then via mapping
         var peerPub = peerPublicKeys[peerId]
         if(peerPub == null) {
             bluetoothToSession[peerId]?.let { peerPub = peerPublicKeys[it] }
@@ -163,7 +192,6 @@ class RealMessageRepository @Inject constructor(
             val derived = ecdh.deriveSharedKey(identity.privateKeyBytes, peerPub)
             synchronized(derivedKeysLock) {
                 derivedKeys[peerId] = derived
-                // Also cache under mapped id
                 bluetoothToSession[peerId]?.let { derivedKeys[it] = derived }
                 sessionToBluetooth[peerId]?.let { derivedKeys[it] = derived }
             }
@@ -177,9 +205,6 @@ class RealMessageRepository @Inject constructor(
         synchronized(derivedKeysLock) {
             derivedKeys[peerId]?.let { return it }
         }
-        // Fallback: per-peer deterministic key derived from hashing peerId + our sessionId
-        // This ensures per-peer uniqueness even before ECDH exchange, but will be
-        // replaced by real ECDH key once exchange completes.
         val identity = currentIdentity
         val fallbackBytes = try {
             val md = java.security.MessageDigest.getInstance("SHA-256")
@@ -195,12 +220,8 @@ class RealMessageRepository @Inject constructor(
 
     private suspend fun handleIncomingMessage(payloadBytes:ByteArray) {
         val wire = MessageWireCodec.decode(payloadBytes) ?: return
-        // Filter: if recipient is not us and not legacy "me", ignore? Keep permissive for now
-        // to support flooding without strict filtering.
         val myIds = setOfNotNull(mySenderId(), currentIdentity?.sessionId, "me")
         if(wire.recipientId !in myIds && wire.recipientId != "unknown") {
-            // Still allow if wire was sent with "me" placeholder or broadcast?
-            // For strict per-peer, uncomment: return
         }
         val peerId = wire.senderId
         val key = getOrDeriveKey(peerId) ?: getOrCreateFallbackKey(peerId)
@@ -212,7 +233,6 @@ class RealMessageRepository @Inject constructor(
                     cipherBytes = Base64.decode(wire.cipherBase64, Base64.NO_WRAP)
                 )
             )
-            // Inbound content filtering — drop harmful content before it reaches UI
             if(!contentFilter.isAllowed(content)) return
             val message = Message(
                 id = "msg-${System.nanoTime()}",
@@ -223,6 +243,7 @@ class RealMessageRepository @Inject constructor(
                 isFromMe = false
             )
             flowFor(peerId).value = flowFor(peerId).value + message
+            persistMessage(peerId, message)
         } catch(e:Exception) {
         }
     }
@@ -253,12 +274,8 @@ class RealMessageRepository @Inject constructor(
     }
 
     override suspend fun sendMessage(peerId:String, content:String) {
-        // Outbound content filtering — block harmful content before it leaves the device
         if(!contentFilter.isAllowed(content)) return
         val key = getOrDeriveKey(peerId) ?: run {
-            // If we don't have peer's key yet, broadcast ours to solicit exchange,
-            // then use fallback per-peer key so message still sends (will be replaced
-            // by real ECDH key on next exchange).
             currentIdentity?.let { broadcastPublicKey(it) }
             getOrCreateFallbackKey(peerId)
         }
@@ -280,6 +297,7 @@ class RealMessageRepository @Inject constructor(
             isFromMe = true
         )
         flowFor(peerId).value = flowFor(peerId).value + localMessage
+        persistMessage(peerId, localMessage)
 
         floodRouter.broadcast(PAYLOAD_TYPE_MESSAGE, MessageWireCodec.encode(wire))
     }

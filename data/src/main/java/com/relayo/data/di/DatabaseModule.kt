@@ -17,8 +17,19 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context:Context):RelayoDatabase =
-        Room.databaseBuilder(context, RelayoDatabase::class.java, "relayo.db").build()
+        Room.databaseBuilder(context, RelayoDatabase::class.java, "relayo.db")
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides
     fun providePendingMessageDao(database:RelayoDatabase) = database.pendingMessageDao()
+
+    @Provides
+    fun provideMessageDao(database:RelayoDatabase) = database.messageDao()
+
+    @Provides
+    fun provideNewsPostDao(database:RelayoDatabase) = database.newsPostDao()
+
+    @Provides
+    fun provideAlertDao(database:RelayoDatabase) = database.alertDao()
 }

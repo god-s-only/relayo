@@ -1,6 +1,8 @@
 package com.relayo.data.repository
 
 import com.relayo.core.mesh.MeshFloodRouter
+import com.relayo.data.local.AlertDao
+import com.relayo.data.local.AlertEntity
 import com.relayo.data.wire.AlertWire
 import com.relayo.data.wire.AlertWireCodec
 import com.relayo.domain.filter.ContentFilter
@@ -13,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.InternalSerializationApi
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,13 +26,21 @@ private const val PAYLOAD_TYPE = "alert"
 @Singleton
 class RealAlertRepository @Inject constructor(
     private val floodRouter:MeshFloodRouter,
-    private val contentFilter:ContentFilter
+    private val contentFilter:ContentFilter,
+    private val alertDao:AlertDao
 ):AlertRepository {
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _alerts = MutableStateFlow<List<EmergencyAlert>>(emptyList())
 
     init {
+        repositoryScope.launch(Dispatchers.IO) {
+            val persisted = alertDao.getAll().map { it.toDomain() }
+            if(persisted.isNotEmpty()) {
+                _alerts.value = persisted
+            }
+        }
+
         repositoryScope.launch {
             floodRouter.incomingPayloads.collect { received ->
                 if(received.payloadType != PAYLOAD_TYPE) return@collect
@@ -51,8 +62,33 @@ class RealAlertRepository @Inject constructor(
                     hopCount = hopCount
                 )
                 _alerts.value = listOf(alert) + _alerts.value
+                persistAlert(alert)
             }
         }
+    }
+
+    private fun AlertEntity.toDomain() = EmergencyAlert(
+        id = id,
+        authorId = authorId,
+        authorDisplayName = authorDisplayName,
+        message = message,
+        severity = try { AlertSeverity.valueOf(severity) } catch(_:Exception) { AlertSeverity.WARNING },
+        timestampEpochMillis = timestampEpochMillis,
+        hopCount = hopCount
+    )
+
+    private fun EmergencyAlert.toEntity() = AlertEntity(
+        id = id,
+        authorId = authorId,
+        authorDisplayName = authorDisplayName,
+        message = message,
+        severity = severity.name,
+        timestampEpochMillis = timestampEpochMillis,
+        hopCount = hopCount
+    )
+
+    private suspend fun persistAlert(alert:EmergencyAlert) = withContext(Dispatchers.IO) {
+        try { alertDao.insert(alert.toEntity()) } catch(_:Exception) {}
     }
 
     override fun observeAlerts() = _alerts.asStateFlow()
@@ -77,6 +113,7 @@ class RealAlertRepository @Inject constructor(
             hopCount = 0
         )
         _alerts.value = listOf(local) + _alerts.value
+        persistAlert(local)
 
         floodRouter.broadcast(PAYLOAD_TYPE, AlertWireCodec.encode(wire), initialTtl = MeshFloodRouter.DEFAULT_TTL)
     }
