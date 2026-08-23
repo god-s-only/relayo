@@ -1,5 +1,6 @@
 package com.relayo.data.repository
 
+import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.model.Board
 import com.relayo.domain.model.BoardPost
 import com.relayo.domain.repository.BoardRepository
@@ -10,7 +11,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class FakeBoardRepository @Inject constructor():BoardRepository {
+class FakeBoardRepository @Inject constructor(
+    private val contentFilter:ContentFilter
+):BoardRepository {
 
     private val allBoards = mutableMapOf<String, Board>()
 
@@ -27,9 +30,10 @@ class FakeBoardRepository @Inject constructor():BoardRepository {
     override fun observeBoardPosts(boardId:String) = postsFlowFor(boardId).asStateFlow()
 
     override suspend fun createBoard(name:String):Board {
+        val safeName = if(contentFilter.isAllowed(name)) name else contentFilter.sanitize(name).ifBlank { "Board" }
         val board = Board(
             id = "board-${System.nanoTime()}",
-            name = name,
+            name = safeName,
             createdByDisplayName = "You",
             createdEpochMillis = System.currentTimeMillis()
         )
@@ -58,6 +62,7 @@ class FakeBoardRepository @Inject constructor():BoardRepository {
     }
 
     override suspend fun postToBoard(boardId:String, content:String) {
+        if(!contentFilter.isAllowed(content)) return
         val post = BoardPost(
             id = "post-${System.nanoTime()}",
             boardId = boardId,

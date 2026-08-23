@@ -2,6 +2,7 @@ package com.relayo.core.mesh
 
 import com.relayo.core.transport.MeshMessenger
 import com.relayo.core.transport.PeerScanner
+import com.relayo.domain.filter.ContentFilter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +23,8 @@ data class ReceivedPayload(
 @Singleton
 class MeshFloodRouter @Inject constructor(
     private val messenger:MeshMessenger,
-    private val peerScanner:PeerScanner
+    private val peerScanner:PeerScanner,
+    private val contentFilter:ContentFilter
 ) {
 
     private val routerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -74,6 +76,18 @@ class MeshFloodRouter @Inject constructor(
     private suspend fun handleEnvelope(envelope:MeshEnvelope) {
         if(hasSeen(envelope.messageId)) return
         markSeen(envelope.messageId)
+
+        // Core mesh-level inbound filter: drop harmful content before it reaches
+        // any feature repository. Exempt key exchange and system types.
+        if(envelope.payloadType in setOf("message", "news_post", "alert", "board_post")) {
+            try {
+                val payloadText = String(envelope.payloadBytes, Charsets.UTF_8)
+                if(!contentFilter.isAllowed(payloadText)) {
+                    return
+                }
+            } catch(e:Exception) {
+            }
+        }
 
         _incomingPayloads.tryEmit(
             ReceivedPayload(

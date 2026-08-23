@@ -3,6 +3,7 @@ package com.relayo.data.repository
 import com.relayo.core.mesh.MeshFloodRouter
 import com.relayo.data.wire.NewsPostWire
 import com.relayo.data.wire.NewsPostWireCodec
+import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.model.NewsPost
 import com.relayo.domain.repository.NewsFeedRepository
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +21,8 @@ private const val PAYLOAD_TYPE = "news_post"
 @OptIn(InternalSerializationApi::class)
 @Singleton
 class RealNewsFeedRepository @Inject constructor(
-    private val floodRouter:MeshFloodRouter
+    private val floodRouter:MeshFloodRouter,
+    private val contentFilter:ContentFilter
 ):NewsFeedRepository {
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -31,6 +33,7 @@ class RealNewsFeedRepository @Inject constructor(
             floodRouter.incomingPayloads.collect { received ->
                 if(received.payloadType != PAYLOAD_TYPE) return@collect
                 val wire = NewsPostWireCodec.decode(received.payloadBytes) ?: return@collect
+                if(!contentFilter.isAllowed(wire.content)) return@collect
                 val hopCount = (MeshFloodRouter.DEFAULT_TTL - received.remainingTtl).coerceAtLeast(0)
                 val post = NewsPost(
                     id = "post-${System.nanoTime()}",
@@ -48,6 +51,7 @@ class RealNewsFeedRepository @Inject constructor(
     override fun observeFeed() = _posts.asStateFlow()
 
     override suspend fun broadcastPost(content:String) {
+        if(!contentFilter.isAllowed(content)) return
         val wire = NewsPostWire(
             authorId = "me",
             authorDisplayName = "You",

@@ -3,6 +3,7 @@ package com.relayo.data.repository
 import com.relayo.core.mesh.MeshFloodRouter
 import com.relayo.data.wire.AlertWire
 import com.relayo.data.wire.AlertWireCodec
+import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.model.AlertSeverity
 import com.relayo.domain.model.EmergencyAlert
 import com.relayo.domain.repository.AlertRepository
@@ -21,7 +22,8 @@ private const val PAYLOAD_TYPE = "alert"
 @OptIn(InternalSerializationApi::class)
 @Singleton
 class RealAlertRepository @Inject constructor(
-    private val floodRouter:MeshFloodRouter
+    private val floodRouter:MeshFloodRouter,
+    private val contentFilter:ContentFilter
 ):AlertRepository {
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -32,6 +34,7 @@ class RealAlertRepository @Inject constructor(
             floodRouter.incomingPayloads.collect { received ->
                 if(received.payloadType != PAYLOAD_TYPE) return@collect
                 val wire = AlertWireCodec.decode(received.payloadBytes) ?: return@collect
+                if(!contentFilter.isAllowed(wire.message)) return@collect
                 val severity = try {
                     AlertSeverity.valueOf(wire.severity)
                 } catch(e:IllegalArgumentException) {
@@ -56,6 +59,7 @@ class RealAlertRepository @Inject constructor(
 
     @OptIn(InternalSerializationApi::class)
     override suspend fun sendAlert(message:String, severity:AlertSeverity) {
+        if(!contentFilter.isAllowed(message)) return
         val wire = AlertWire(
             authorId = "me",
             authorDisplayName = "You",

@@ -20,6 +20,7 @@ android {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":core:mesh"))
+    implementation(project(":core:transport"))
     implementation(project(":core:crypto"))
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

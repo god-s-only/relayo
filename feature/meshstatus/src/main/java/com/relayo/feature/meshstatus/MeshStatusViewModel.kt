@@ -76,4 +76,9 @@ class MeshStatusViewModel @Inject constructor(
             android.util.Log.d("RelayoDebug", "Flood-broadcast sent")
         }
     }
+
+    fun onPermissionsGranted() {
+        // Permission grant is handled by AppSessionViewModel / MeshSessionManager;
+        // MeshStatus screen just needs to acknowledge. Could also trigger a refresh.
+    }
 }

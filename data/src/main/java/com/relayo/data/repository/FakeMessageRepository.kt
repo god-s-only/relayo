@@ -2,12 +2,16 @@ package com.relayo.data.repository
 
 import com.relayo.core.crypto.AesGcmCipher
 import com.relayo.core.crypto.EncryptedPayload
+import com.relayo.domain.filter.ContentFilter
+import com.relayo.domain.model.ConversationSummary
 import com.relayo.domain.model.Message
 import com.relayo.domain.repository.MessageRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import javax.crypto.SecretKey
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +27,8 @@ private data class StoredMessage(
 
 @Singleton
 class FakeMessageRepository @Inject constructor(
-    private val cipher:AesGcmCipher
+    private val cipher:AesGcmCipher,
+    private val contentFilter:ContentFilter
 ):MessageRepository {
 
     // Simulated shared session key — stands in for the real ECDH-derived
@@ -38,7 +43,23 @@ class FakeMessageRepository @Inject constructor(
 
     override fun observeConversation(peerId:String) = flowFor(peerId).asStateFlow()
 
+    override fun observeConversations():Flow<List<ConversationSummary>> = flow {
+        // Fake implementation: derive summaries from stored conversation flows
+        val summaries = conversationFlows.map { (peerId, flow) ->
+            val msgs = flow.value
+            ConversationSummary(
+                peerId = peerId,
+                displayName = peerId.takeLast(6),
+                lastMessagePreview = msgs.lastOrNull()?.content,
+                lastMessageTimestampEpochMillis = msgs.lastOrNull()?.timestampEpochMillis,
+                isOnline = true
+            )
+        }
+        emit(summaries)
+    }
+
     override suspend fun sendMessage(peerId:String, content:String) {
+        if(!contentFilter.isAllowed(content)) return
         val encrypted = cipher.encrypt(sessionKey, content)
         val stored = StoredMessage(
             id = "msg-${System.nanoTime()}",
@@ -81,6 +102,7 @@ class FakeMessageRepository @Inject constructor(
                     isFromMe = stored.isFromMe
                 )
             }
+            .filter { contentFilter.isAllowed(it.content) }
         flowFor(peerId).value = decrypted
     }
 }

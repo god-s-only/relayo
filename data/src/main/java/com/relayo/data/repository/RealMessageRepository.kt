@@ -14,6 +14,7 @@ import com.relayo.data.wire.MessageWireCodec
 import com.relayo.domain.model.ConversationSummary
 import com.relayo.domain.model.EphemeralIdentity
 import com.relayo.domain.model.Message
+import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.repository.IdentityRepository
 import com.relayo.domain.repository.MeshRepository
 import com.relayo.domain.repository.MessageRepository
@@ -41,6 +42,7 @@ class RealMessageRepository @Inject constructor(
     private val ecdh:EcdhKeyAgreement,
     private val meshRepository:MeshRepository,
     private val identityRepository:IdentityRepository,
+    private val contentFilter:ContentFilter,
     @ApplicationContext private val context:Context
 ):MessageRepository {
 
@@ -195,7 +197,7 @@ class RealMessageRepository @Inject constructor(
         val wire = MessageWireCodec.decode(payloadBytes) ?: return
         // Filter: if recipient is not us and not legacy "me", ignore? Keep permissive for now
         // to support flooding without strict filtering.
-        val myIds = setOf(mySenderId(), currentIdentity?.sessionId, "me")
+        val myIds = setOfNotNull(mySenderId(), currentIdentity?.sessionId, "me")
         if(wire.recipientId !in myIds && wire.recipientId != "unknown") {
             // Still allow if wire was sent with "me" placeholder or broadcast?
             // For strict per-peer, uncomment: return
@@ -210,6 +212,8 @@ class RealMessageRepository @Inject constructor(
                     cipherBytes = Base64.decode(wire.cipherBase64, Base64.NO_WRAP)
                 )
             )
+            // Inbound content filtering — drop harmful content before it reaches UI
+            if(!contentFilter.isAllowed(content)) return
             val message = Message(
                 id = "msg-${System.nanoTime()}",
                 senderId = wire.senderId,
@@ -249,6 +253,8 @@ class RealMessageRepository @Inject constructor(
     }
 
     override suspend fun sendMessage(peerId:String, content:String) {
+        // Outbound content filtering — block harmful content before it leaves the device
+        if(!contentFilter.isAllowed(content)) return
         val key = getOrDeriveKey(peerId) ?: run {
             // If we don't have peer's key yet, broadcast ours to solicit exchange,
             // then use fallback per-peer key so message still sends (will be replaced
