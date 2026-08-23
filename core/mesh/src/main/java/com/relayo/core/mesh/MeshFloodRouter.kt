@@ -79,7 +79,7 @@ class MeshFloodRouter @Inject constructor(
 
         // Core mesh-level inbound filter: drop harmful content before it reaches
         // any feature repository. Exempt key exchange and system types.
-        if(envelope.payloadType in setOf("message", "news_post", "alert", "board_post")) {
+        if(envelope.payloadType in setOf("message", "news_post", "alert", "board_post", "board_create")) {
             try {
                 val payloadText = String(envelope.payloadBytes, Charsets.UTF_8)
                 if(!contentFilter.isAllowed(payloadText)) {

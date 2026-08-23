@@ -1,20 +1,35 @@
 package com.relayo.data.repository
 
+import com.relayo.core.mesh.MeshFloodRouter
+import com.relayo.data.wire.BoardPostWire
+import com.relayo.data.wire.BoardWire
+import com.relayo.data.wire.BoardWireCodec
 import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.model.Board
 import com.relayo.domain.model.BoardPost
 import com.relayo.domain.repository.BoardRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.InternalSerializationApi
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val PAYLOAD_TYPE_BOARD_CREATE = "board_create"
+private const val PAYLOAD_TYPE_BOARD_POST = "board_post"
+
+@OptIn(InternalSerializationApi::class)
 @Singleton
 class FakeBoardRepository @Inject constructor(
-    private val contentFilter:ContentFilter
+    private val contentFilter:ContentFilter,
+    private val floodRouter:MeshFloodRouter
 ):BoardRepository {
 
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val allBoards = mutableMapOf<String, Board>()
 
     private val _myBoards = MutableStateFlow<List<Board>>(emptyList())
@@ -24,6 +39,55 @@ class FakeBoardRepository @Inject constructor(
 
     private fun postsFlowFor(boardId:String):MutableStateFlow<List<BoardPost>> =
         postsByBoard.getOrPut(boardId) { MutableStateFlow(emptyList()) }
+
+    init {
+        repositoryScope.launch {
+            floodRouter.incomingPayloads.collect { received ->
+                when(received.payloadType) {
+                    PAYLOAD_TYPE_BOARD_CREATE -> handleIncomingBoard(received.payloadBytes)
+                    PAYLOAD_TYPE_BOARD_POST -> handleIncomingPost(received.payloadBytes)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingBoard(payloadBytes:ByteArray) {
+        val wire = BoardWireCodec.decodeBoard(payloadBytes) ?: return
+        if(!contentFilter.isAllowed(wire.name)) return
+        if(allBoards.containsKey(wire.id)) return
+        val board = Board(
+            id = wire.id,
+            name = wire.name,
+            createdByDisplayName = wire.createdByDisplayName,
+            createdEpochMillis = wire.createdEpochMillis
+        )
+        allBoards[board.id] = board
+        // Do not auto-add to _myBoards — user must still scan/join to become member
+    }
+
+    private fun handleIncomingPost(payloadBytes:ByteArray) {
+        val wire = BoardWireCodec.decodePost(payloadBytes) ?: return
+        if(!contentFilter.isAllowed(wire.content)) return
+        // Ensure board exists (create placeholder if not previously announced)
+        if(!allBoards.containsKey(wire.boardId)) {
+            allBoards[wire.boardId] = Board(
+                id = wire.boardId,
+                name = "Board ${wire.boardId.takeLast(6)}",
+                createdByDisplayName = "Unknown",
+                createdEpochMillis = wire.timestampEpochMillis
+            )
+        }
+        val post = BoardPost(
+            id = wire.id,
+            boardId = wire.boardId,
+            authorDisplayName = wire.authorDisplayName,
+            content = wire.content,
+            timestampEpochMillis = wire.timestampEpochMillis
+        )
+        val flow = postsFlowFor(wire.boardId)
+        if(flow.value.any { it.id == post.id }) return
+        flow.value = flow.value + post
+    }
 
     override fun observeMyBoards() = myBoardsFlow
 
@@ -39,6 +103,16 @@ class FakeBoardRepository @Inject constructor(
         )
         allBoards[board.id] = board
         _myBoards.value = _myBoards.value + board
+        // Announce to mesh
+        try {
+            val wire = BoardWire(
+                id = board.id,
+                name = board.name,
+                createdByDisplayName = board.createdByDisplayName,
+                createdEpochMillis = board.createdEpochMillis
+            )
+            floodRouter.broadcast(PAYLOAD_TYPE_BOARD_CREATE, BoardWireCodec.encodeBoard(wire))
+        } catch(_:Exception) {}
         return board
     }
 
@@ -71,5 +145,16 @@ class FakeBoardRepository @Inject constructor(
             timestampEpochMillis = System.currentTimeMillis()
         )
         postsFlowFor(boardId).value = postsFlowFor(boardId).value + post
+        // Broadcast to mesh for other members
+        try {
+            val wire = BoardPostWire(
+                id = post.id,
+                boardId = post.boardId,
+                authorDisplayName = post.authorDisplayName,
+                content = post.content,
+                timestampEpochMillis = post.timestampEpochMillis
+            )
+            floodRouter.broadcast(PAYLOAD_TYPE_BOARD_POST, BoardWireCodec.encodePost(wire))
+        } catch(_:Exception) {}
     }
 }
