@@ -36,6 +36,12 @@ class MeshFloodRouter @Inject constructor(
         }
     }
 
+    private val envelopeStore = object:LinkedHashMap<String, MeshEnvelope>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<String, MeshEnvelope>?):Boolean {
+            return size > 200
+        }
+    }
+
     private val knownPeerAddresses = mutableSetOf<String>()
 
     private val _incomingPayloads = MutableSharedFlow<ReceivedPayload>(extraBufferCapacity = 32)
@@ -70,12 +76,14 @@ class MeshFloodRouter @Inject constructor(
             payloadBytes = payloadBytes
         )
         markSeen(envelope.messageId)
+        storeEnvelope(envelope)
         relayToAllPeers(envelope)
     }
 
     private suspend fun handleEnvelope(envelope:MeshEnvelope) {
         if(hasSeen(envelope.messageId)) return
         markSeen(envelope.messageId)
+        storeEnvelope(envelope)
 
         // Core mesh-level inbound filter: drop harmful content before it reaches
         // any feature repository. Exempt key exchange and system types.
@@ -117,6 +125,17 @@ class MeshFloodRouter @Inject constructor(
     private fun markSeen(messageId:String) {
         seenMessageIds[messageId] = System.currentTimeMillis()
     }
+
+    @Synchronized
+    private fun storeEnvelope(envelope:MeshEnvelope) {
+        envelopeStore[envelope.messageId] = envelope
+    }
+
+    @Synchronized
+    fun getSeenIdsSnapshot():List<String> = seenMessageIds.keys.toList()
+
+    @Synchronized
+    fun getEnvelope(messageId:String):MeshEnvelope? = envelopeStore[messageId]
 
     private fun generateMessageId():String {
         val bytes = ByteArray(12)

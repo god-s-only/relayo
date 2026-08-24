@@ -13,7 +13,8 @@ import javax.inject.Singleton
 class MeshSessionManager @Inject constructor(
     private val messenger:MeshMessenger,
     private val floodRouter:MeshFloodRouter,
-    private val meshRepository:MeshRepository
+    private val meshRepository:MeshRepository,
+    private val gossipManager:GossipManager
 ) {
 
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -24,6 +25,7 @@ class MeshSessionManager @Inject constructor(
         started = true
         messenger.start()
         floodRouter.start()
+        gossipManager.start()
         sessionScope.launch {
             meshRepository.startDiscovery()
         }
