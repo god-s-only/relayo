@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relayo.domain.model.MeshDevice
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -103,6 +104,31 @@ fun MeshStatusScreen(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            uiState.myNickname?.let { nick ->
+                Spacer(modifier = Modifier.size(4.dp))
+                Text(
+                    text = "Nickname: $nick",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+            Spacer(modifier = Modifier.size(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = uiState.nicknameDraft,
+                    onValueChange = viewModel::onNicknameDraftChanged,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Set nickname (e.g. Alex)") },
+                    singleLine = true
+                )
+                Button(onClick = viewModel::onSetNickname) {
+                    Text("Set")
+                }
+            }
             Spacer(modifier = Modifier.size(16.dp))
             Button(
                 onClick = { viewModel.onEmergencyWipe() },
@@ -171,7 +197,7 @@ private fun DeviceRow(device:MeshDevice) {
                     )
             )
             Spacer(modifier = Modifier.size(14.dp))
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = device.displayName,
                     style = MaterialTheme.typography.titleMedium,
@@ -184,6 +210,14 @@ private fun DeviceRow(device:MeshDevice) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
+                device.fingerprint?.let { fp ->
+                    Spacer(modifier = Modifier.size(2.dp))
+                    Text(
+                        text = "fp:$fp",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    )
+                }
             }
             Text(
                 text = "${device.signalStrength} dBm",
