@@ -7,4 +7,6 @@ interface MeshRepository {
     fun observeNearbyDevices():Flow<List<MeshDevice>>
     suspend fun startDiscovery()
     suspend fun stopDiscovery()
+    fun observeMyNickname():Flow<String?> = kotlinx.coroutines.flow.flowOf(null)
+    suspend fun setMyNickname(nickname:String) {}
 }

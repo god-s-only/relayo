@@ -6,5 +6,6 @@ data class MeshDevice(
     val hopCount:Int,
     val signalStrength:Int,
     val lastSeenEpochMillis:Long,
-    val isDirectNeighbor:Boolean
+    val isDirectNeighbor:Boolean,
+    val fingerprint:String? = null
 )
