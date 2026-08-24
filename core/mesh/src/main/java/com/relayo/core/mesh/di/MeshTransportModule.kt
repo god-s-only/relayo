@@ -1,7 +1,7 @@
 package com.relayo.core.mesh.di
 
-import com.relayo.core.mesh.BleMeshMessenger
-import com.relayo.core.mesh.BlePeerScanner
+import com.relayo.core.mesh.HybridMeshMessenger
+import com.relayo.core.mesh.HybridPeerScanner
 import com.relayo.core.transport.MeshMessenger
 import com.relayo.core.transport.PeerScanner
 import dagger.Binds
@@ -15,11 +15,11 @@ abstract class MeshTransportModule {
 
     @Binds
     abstract fun bindPeerScanner(
-        impl:BlePeerScanner
+        impl:HybridPeerScanner
     ):PeerScanner
 
     @Binds
     abstract fun bindMeshMessenger(
-        impl:BleMeshMessenger
+        impl:HybridMeshMessenger
     ):MeshMessenger
 }
