@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 
 @InternalSerializationApi
 data class MessageWire(
+    val messageId:String = "",
     val senderId:String,
     val recipientId:String,
     val ivBase64:String,

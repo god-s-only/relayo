@@ -9,6 +9,8 @@ import com.relayo.core.crypto.EncryptedPayload
 import com.relayo.core.mesh.MeshFloodRouter
 import com.relayo.data.local.MessageDao
 import com.relayo.data.local.MessageEntity
+import com.relayo.data.wire.DeliveryAckWire
+import com.relayo.data.wire.DeliveryAckWireCodec
 import com.relayo.data.wire.KeyExchangeWire
 import com.relayo.data.wire.KeyExchangeWireCodec
 import com.relayo.data.wire.MessageWire
@@ -20,6 +22,7 @@ import com.relayo.domain.filter.ContentFilter
 import com.relayo.domain.repository.IdentityRepository
 import com.relayo.domain.repository.MeshRepository
 import com.relayo.domain.repository.MessageRepository
+import com.relayo.domain.repository.OutboxRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,7 @@ import javax.inject.Singleton
 
 private const val PAYLOAD_TYPE_MESSAGE = "message"
 private const val PAYLOAD_TYPE_KEY_EXCHANGE = "key_exchange"
+private const val PAYLOAD_TYPE_DELIVERY_ACK = "delivery_ack"
 
 @OptIn(InternalSerializationApi::class)
 @Singleton
@@ -46,6 +50,7 @@ class RealMessageRepository @Inject constructor(
     private val identityRepository:IdentityRepository,
     private val contentFilter:ContentFilter,
     private val messageDao:MessageDao,
+    private val outboxRepository:OutboxRepository,
     @ApplicationContext private val context:Context
 ):MessageRepository {
 
@@ -61,6 +66,8 @@ class RealMessageRepository @Inject constructor(
 
     @Volatile
     private var currentIdentity:EphemeralIdentity? = null
+    @Volatile
+    private var currentNearbyIds:Set<String> = emptySet()
 
     private fun flowFor(peerId:String):MutableStateFlow<List<Message>> =
         conversationFlows.getOrPut(peerId) { MutableStateFlow(emptyList()) }
@@ -78,11 +85,12 @@ class RealMessageRepository @Inject constructor(
 
         repositoryScope.launch {
             meshRepository.observeNearbyDevices().collect { nearby ->
+                currentNearbyIds = nearby.map { it.id }.toSet()
+                nearby.forEach { device -> knownPeerDisplayNames[device.id] = device.displayName }
                 currentIdentity?.let { broadcastPublicKey(it) }
             }
         }
 
-        // Load persisted messages from Room and populate flows
         repositoryScope.launch(Dispatchers.IO) {
             val persisted = messageDao.getAll()
             persisted.groupBy { it.peerId }.forEach { (peerId, entities) ->
@@ -96,6 +104,7 @@ class RealMessageRepository @Inject constructor(
                 when(received.payloadType) {
                     PAYLOAD_TYPE_KEY_EXCHANGE -> handleKeyExchange(received.payloadBytes)
                     PAYLOAD_TYPE_MESSAGE -> handleIncomingMessage(received.payloadBytes)
+                    PAYLOAD_TYPE_DELIVERY_ACK -> { /* handled by Outbox, ignore here */ }
                 }
             }
         }
@@ -218,6 +227,18 @@ class RealMessageRepository @Inject constructor(
         return key
     }
 
+    private suspend fun sendDeliveryAck(originalMessageId:String, originalSenderId:String) {
+        try {
+            val ackWire = DeliveryAckWire(
+                originalMessageId = originalMessageId,
+                ackSenderId = mySenderId(),
+                originalSenderId = originalSenderId,
+                timestampEpochMillis = System.currentTimeMillis()
+            )
+            floodRouter.broadcast(PAYLOAD_TYPE_DELIVERY_ACK, DeliveryAckWireCodec.encode(ackWire))
+        } catch(_:Exception) {}
+    }
+
     private suspend fun handleIncomingMessage(payloadBytes:ByteArray) {
         val wire = MessageWireCodec.decode(payloadBytes) ?: return
         val myIds = setOfNotNull(mySenderId(), currentIdentity?.sessionId, "me")
@@ -234,16 +255,21 @@ class RealMessageRepository @Inject constructor(
                 )
             )
             if(!contentFilter.isAllowed(content)) return
+            val messageId = wire.messageId.ifBlank { "msg-${System.nanoTime()}" }
             val message = Message(
-                id = "msg-${System.nanoTime()}",
+                id = messageId,
                 senderId = wire.senderId,
                 recipientId = wire.recipientId,
                 content = content,
                 timestampEpochMillis = wire.timestampEpochMillis,
                 isFromMe = false
             )
+            // Deduplicate by messageId
+            if(flowFor(peerId).value.any { it.id == messageId }) return
             flowFor(peerId).value = flowFor(peerId).value + message
             persistMessage(peerId, message)
+            // Send delivery ack back to sender
+            sendDeliveryAck(messageId, wire.senderId)
         } catch(e:Exception) {
         }
     }
@@ -280,7 +306,9 @@ class RealMessageRepository @Inject constructor(
             getOrCreateFallbackKey(peerId)
         }
         val encrypted = cipher.encrypt(key, content)
+        val messageId = "msg-${System.nanoTime()}-${(0..9999).random()}"
         val wire = MessageWire(
+            messageId = messageId,
             senderId = mySenderId(),
             recipientId = peerId,
             ivBase64 = Base64.encodeToString(encrypted.ivBytes, Base64.NO_WRAP),
@@ -289,7 +317,7 @@ class RealMessageRepository @Inject constructor(
         )
 
         val localMessage = Message(
-            id = "msg-${System.nanoTime()}",
+            id = messageId,
             senderId = mySenderId(),
             recipientId = peerId,
             content = content,
@@ -299,6 +327,20 @@ class RealMessageRepository @Inject constructor(
         flowFor(peerId).value = flowFor(peerId).value + localMessage
         persistMessage(peerId, localMessage)
 
-        floodRouter.broadcast(PAYLOAD_TYPE_MESSAGE, MessageWireCodec.encode(wire))
+        val encoded = MessageWireCodec.encode(wire)
+        // If peer is not currently nearby, enqueue for store-and-forward
+        if(peerId !in currentNearbyIds) {
+            try {
+                outboxRepository.enqueue(peerId, PAYLOAD_TYPE_MESSAGE, encoded)
+            } catch(_:Exception) {
+                floodRouter.broadcast(PAYLOAD_TYPE_MESSAGE, encoded)
+            }
+        } else {
+            floodRouter.broadcast(PAYLOAD_TYPE_MESSAGE, encoded)
+            // Also enqueue as backup for ack-based confirmation; outbox will remove on ack
+            try {
+                outboxRepository.enqueue(peerId, PAYLOAD_TYPE_MESSAGE, encoded)
+            } catch(_:Exception) {}
+        }
     }
 }
