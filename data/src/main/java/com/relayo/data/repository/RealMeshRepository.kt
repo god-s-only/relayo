@@ -68,9 +68,9 @@ class RealMeshRepository @Inject constructor(
 
     override fun observeNearbyDevices():Flow<List<MeshDevice>> = _devices.asStateFlow()
 
-    fun observeMyNickname():Flow<String?> = _myNickname.asStateFlow()
+    override fun observeMyNickname():Flow<String?> = _myNickname.asStateFlow()
 
-    suspend fun setMyNickname(nickname:String) {
+    override suspend fun setMyNickname(nickname:String) {
         val safe = if(contentFilter.isAllowed(nickname)) nickname.trim().take(24) else contentFilter.sanitize(nickname).trim().take(24)
         if(safe.isBlank()) return
         _myNickname.value = safe
