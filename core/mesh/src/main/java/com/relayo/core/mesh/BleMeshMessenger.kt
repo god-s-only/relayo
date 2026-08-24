@@ -14,9 +14,15 @@ import android.content.Context
 import com.relayo.core.transport.IncomingBytes
 import com.relayo.core.transport.MeshMessenger
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
@@ -34,9 +40,17 @@ class BleMeshMessenger @Inject constructor(
     private val _incoming = MutableSharedFlow<IncomingBytes>(extraBufferCapacity = 32)
     private var gattServer:BluetoothGattServer? = null
     private val activeConnections = mutableMapOf<String, BluetoothGatt>()
+    private val lastUsedMap = mutableMapOf<String, Long>()
+    private val connectionLock = Any()
     private val pendingWrites = mutableMapOf<String, kotlinx.coroutines.CancellableContinuation<Boolean>>()
     private val pendingWritesLock = Any()
     private var isStarted = false
+    private var cleanupJob:Job? = null
+
+    companion object {
+        private const val IDLE_TIMEOUT_MS = 60_000L
+        private const val CLEANUP_INTERVAL_MS = 30_000L
+    }
 
     override fun observeIncoming() = _incoming.asSharedFlow()
 
@@ -65,6 +79,7 @@ class BleMeshMessenger @Inject constructor(
                     offset:Int,
                     value:ByteArray
                 ) {
+                    updateLastUsed(device.address)
                     _incoming.tryEmit(IncomingBytes(fromAddress = device.address, payload = value))
                     if(responseNeeded) {
                         gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -75,7 +90,55 @@ class BleMeshMessenger @Inject constructor(
             gattServer = bluetoothManager.openGattServer(context, callback)
             gattServer?.addService(service)
             isStarted = true
+            startCleanupJob()
         } catch(e:SecurityException) {
+        }
+    }
+
+    private fun startCleanupJob() {
+        cleanupJob?.cancel()
+        cleanupJob = CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            while(true) {
+                delay(CLEANUP_INTERVAL_MS)
+                cleanupIdleConnections()
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun cleanupIdleConnections() {
+        val now = System.currentTimeMillis()
+        val toClose = mutableListOf<Pair<String, BluetoothGatt>>()
+        synchronized(connectionLock) {
+            val iterator = lastUsedMap.entries.iterator()
+            while(iterator.hasNext()) {
+                val entry = iterator.next()
+                if(now - entry.value > IDLE_TIMEOUT_MS) {
+                    val gatt = activeConnections[entry.key]
+                    if(gatt != null) {
+                        toClose.add(entry.key to gatt)
+                    }
+                    iterator.remove()
+                    activeConnections.remove(entry.key)
+                    synchronized(pendingWritesLock) {
+                        pendingWrites.remove(entry.key)?.let { cont ->
+                            if(cont.isActive) cont.resume(false)
+                        }
+                    }
+                }
+            }
+        }
+        toClose.forEach { (address, gatt) ->
+            try {
+                gatt.disconnect()
+                gatt.close()
+            } catch(_:SecurityException) {} catch(_:Exception) {}
+        }
+    }
+
+    private fun updateLastUsed(address:String) {
+        synchronized(connectionLock) {
+            lastUsedMap[address] = System.currentTimeMillis()
         }
     }
 
@@ -84,7 +147,7 @@ class BleMeshMessenger @Inject constructor(
         if(!isStarted) return false
         return try {
             val device = adapter?.getRemoteDevice(address) ?: return false
-            val gatt = activeConnections[address] ?: try {
+            val gatt = synchronized(connectionLock) { activeConnections[address] } ?: try {
                 withTimeout(5_000) { connectAndCache(device) }
             } catch(e:TimeoutCancellationException) {
                 null
@@ -120,6 +183,9 @@ class BleMeshMessenger @Inject constructor(
                             if(continuation.isActive) continuation.resume(false)
                         }
                     }
+                }.also { success ->
+                    if(success) updateLastUsed(address)
+                    success
                 }
             } catch(e:TimeoutCancellationException) {
                 synchronized(pendingWritesLock) {
@@ -139,10 +205,16 @@ class BleMeshMessenger @Inject constructor(
                 val callback = object:BluetoothGattCallback() {
                     override fun onConnectionStateChange(gatt:BluetoothGatt, status:Int, newState:Int) {
                         if(newState == BluetoothProfile.STATE_CONNECTED) {
-                            activeConnections[device.address] = gatt
+                            synchronized(connectionLock) {
+                                activeConnections[device.address] = gatt
+                                lastUsedMap[device.address] = System.currentTimeMillis()
+                            }
                             gatt.discoverServices()
                         } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-                            activeConnections.remove(device.address)
+                            synchronized(connectionLock) {
+                                activeConnections.remove(device.address)
+                                lastUsedMap.remove(device.address)
+                            }
                             synchronized(pendingWritesLock) {
                                 pendingWrites.remove(device.address)?.let { cont ->
                                     if(cont.isActive) cont.resume(false)
@@ -157,6 +229,7 @@ class BleMeshMessenger @Inject constructor(
 
                     override fun onServicesDiscovered(gatt:BluetoothGatt, status:Int) {
                         if(status == BluetoothGatt.GATT_SUCCESS) {
+                            updateLastUsed(device.address)
                             if(continuation.isActive) continuation.resume(gatt)
                         } else {
                             if(continuation.isActive) continuation.resume(null)
@@ -169,6 +242,7 @@ class BleMeshMessenger @Inject constructor(
                         status:Int
                     ) {
                         val addr = gatt.device.address
+                        if(status == BluetoothGatt.GATT_SUCCESS) updateLastUsed(addr)
                         val cont = synchronized(pendingWritesLock) {
                             pendingWrites.remove(addr)
                         }
