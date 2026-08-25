@@ -1,10 +1,12 @@
 package com.relayo.data.wire
 
 import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+@Serializable
 @InternalSerializationApi
 data class DeliveryAckWire(
     val originalMessageId:String,

@@ -1,10 +1,12 @@
 package com.relayo.data.wire
 
 import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
+@Serializable
 @InternalSerializationApi
 data class BoardWire(
     val id:String,
@@ -13,6 +15,7 @@ data class BoardWire(
     val createdEpochMillis:Long
 )
 
+@Serializable
 @InternalSerializationApi
 data class BoardPostWire(
     val id:String,

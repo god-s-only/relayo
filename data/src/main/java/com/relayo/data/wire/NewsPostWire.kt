@@ -6,6 +6,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
+@Serializable
 @InternalSerializationApi
 data class NewsPostWire(
     val authorId:String,

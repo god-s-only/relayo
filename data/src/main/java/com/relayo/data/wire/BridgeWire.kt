@@ -1,10 +1,12 @@
 package com.relayo.data.wire
 
 import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
+@Serializable
 @InternalSerializationApi
 data class BridgeRequestWire(
     val id:String,
@@ -14,6 +16,7 @@ data class BridgeRequestWire(
     val timestampEpochMillis:Long
 )
 
+@Serializable
 @InternalSerializationApi
 data class BridgeResponseWire(
     val requestId:String,
